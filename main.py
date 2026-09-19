@@ -11,7 +11,7 @@ import time
 import tkinter as tk
 from tkinter import messagebox
 
-from game_logic import LEVELS, Direction, GameEngine, Level
+from game_logic import LEVELS, ArrowSpec, Direction, GameEngine, Level
 
 
 WINDOW_BG = "#10182c"
@@ -211,22 +211,25 @@ class ArrowEscapeApp(tk.Tk):
                 cy = top + (row + 0.5) * cell
                 radius = max(2.5, cell * 0.045)
                 self.canvas.create_oval(cx - radius, cy - radius, cx + radius, cy + radius, fill=GRID_DOT, outline="")
-        for (row, col), direction in self.engine.active.items():
-            self.draw_arrow(row, col, direction)
+        for arrow in self.engine.active.values():
+            self.draw_arrow(arrow)
 
-    def draw_arrow(self, row: int, col: int, direction: Direction, tag: str = "arrow") -> None:
-        """Draw a line segment with an arrowhead, matching the reference style."""
+    def draw_arrow(self, arrow: ArrowSpec, tag: str = "arrow") -> None:
+        """Draw the complete curved/orthogonal path and its terminal head."""
 
         left, top, cell = self.board_geometry()
-        cx = left + (col + 0.5) * cell
-        cy = top + (row + 0.5) * cell
-        dx, dy = direction.dc, direction.dr
+        direction = arrow.direction
         color = ARROW_COLORS[direction]
-        start_x, start_y = cx - dx * cell * 0.34, cy - dy * cell * 0.34
-        end_x, end_y = cx + dx * cell * 0.39, cy + dy * cell * 0.39
+        coordinates: list[float] = []
+        for row, col in arrow.path:
+            coordinates.extend((left + (col + 0.5) * cell, top + (row + 0.5) * cell))
+        head_row, head_col = arrow.path[-1]
+        head_x = left + (head_col + 0.5) * cell
+        head_y = top + (head_row + 0.5) * cell
+        coordinates.extend((head_x + direction.dc * cell * 0.42, head_y + direction.dr * cell * 0.42))
         width = max(5, int(cell * 0.075))
-        self.canvas.create_line(start_x, start_y, end_x, end_y, fill="#121b31", width=width + 5, capstyle=tk.ROUND, tags=tag)
-        self.canvas.create_line(start_x, start_y, end_x, end_y, fill=color, width=width, capstyle=tk.ROUND, arrow=tk.LAST, arrowshape=(cell * 0.22, cell * 0.25, cell * 0.10), tags=tag)
+        self.canvas.create_line(*coordinates, fill="#121b31", width=width + 5, capstyle=tk.ROUND, joinstyle=tk.ROUND, tags=tag)
+        self.canvas.create_line(*coordinates, fill=color, width=width, capstyle=tk.ROUND, joinstyle=tk.ROUND, arrow=tk.LAST, arrowshape=(cell * 0.22, cell * 0.25, cell * 0.10), tags=tag)
 
     def on_canvas_click(self, event: tk.Event) -> None:
         if self.engine is None or self.mode != "playing" or self.animation_active:
@@ -265,13 +268,14 @@ class ArrowEscapeApp(tk.Tk):
         self.after(260, lambda: self.canvas.delete(pulse))
 
     def animate_launch(self, row: int, col: int, level: Level) -> None:
-        """Move a line arrow through the board and beyond its boundary."""
+        """Move the complete folded line through the board and outside it."""
 
-        direction = next(a.direction for a in level.arrows if a.row == row and a.col == col)
+        arrow = next(a for a in level.arrows if a.row == row and a.col == col)
+        direction = arrow.direction
         left, top, cell = self.board_geometry()
         size = level.size
-        cx = left + (col + 0.5) * cell
-        cy = top + (row + 0.5) * cell
+        head_x = left + (col + 0.5) * cell
+        head_y = top + (row + 0.5) * cell
         if direction.dc > 0:
             distance = (size - col) * cell + cell * 0.75
         elif direction.dc < 0:
@@ -281,7 +285,6 @@ class ArrowEscapeApp(tk.Tk):
         else:
             distance = (row + 1) * cell + cell * 0.75
         dx, dy = direction.dc, direction.dr
-        line_length = cell * 0.82
         frames = 20
         self.animation_active = True
         self.draw_board()
@@ -292,12 +295,18 @@ class ArrowEscapeApp(tk.Tk):
                 self.canvas.delete(current_item[0])
             progress = min(1.0, frame / frames)
             eased = 1 - (1 - progress) ** 3
-            tip_x = cx + dx * distance * eased
-            tip_y = cy + dy * distance * eased
-            tail_x = tip_x - dx * line_length
-            tail_y = tip_y - dy * line_length
+            offset_x = dx * distance * eased
+            offset_y = dy * distance * eased
+            coordinates: list[float] = []
+            for path_row, path_col in arrow.path:
+                point_x = left + (path_col + 0.5) * cell + offset_x
+                point_y = top + (path_row + 0.5) * cell + offset_y
+                coordinates.extend((point_x, point_y))
+            tip_x = head_x + offset_x + dx * cell * 0.42
+            tip_y = head_y + offset_y + dy * cell * 0.42
+            coordinates.extend((tip_x, tip_y))
             color = ARROW_COLORS[direction]
-            current_item[0] = self.canvas.create_line(tail_x, tail_y, tip_x, tip_y, fill=color, width=max(5, int(cell * 0.085)), capstyle=tk.ROUND, arrow=tk.LAST, arrowshape=(cell * 0.22, cell * 0.25, cell * 0.10), tags="flight")
+            current_item[0] = self.canvas.create_line(*coordinates, fill=color, width=max(5, int(cell * 0.075)), capstyle=tk.ROUND, joinstyle=tk.ROUND, arrow=tk.LAST, arrowshape=(cell * 0.22, cell * 0.25, cell * 0.10), tags="flight")
             if frame < frames:
                 self.after(22, lambda: step(frame + 1))
             else:
