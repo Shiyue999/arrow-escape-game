@@ -268,7 +268,13 @@ class ArrowEscapeApp(tk.Tk):
         self.after(260, lambda: self.canvas.delete(pulse))
 
     def animate_launch(self, row: int, col: int, level: Level) -> None:
-        """Move the complete folded line through the board and outside it."""
+        """Unwind a folded line along its own points before it exits.
+
+        The path is not translated as one rigid shape.  Instead, its tail is
+        progressively trimmed from point to point while the terminal arrow
+        grows beyond the board.  This is the same visual language as the
+        reference video: every bend participates in the launch trajectory.
+        """
 
         arrow = next(a for a in level.arrows if a.row == row and a.col == col)
         direction = arrow.direction
@@ -285,32 +291,47 @@ class ArrowEscapeApp(tk.Tk):
         else:
             distance = (row + 1) * cell + cell * 0.75
         dx, dy = direction.dc, direction.dr
-        frames = 20
+        frames = max(28, len(arrow.path) * 4)
         self.animation_active = True
         self.draw_board()
-        current_item: list[int | None] = [None]
+        current_items: list[int] = []
 
         def step(frame: int) -> None:
-            if current_item[0] is not None:
-                self.canvas.delete(current_item[0])
+            for item in current_items:
+                self.canvas.delete(item)
+            current_items.clear()
             progress = min(1.0, frame / frames)
             eased = 1 - (1 - progress) ** 3
-            offset_x = dx * distance * eased
-            offset_y = dy * distance * eased
-            coordinates: list[float] = []
-            for path_row, path_col in arrow.path:
-                point_x = left + (path_col + 0.5) * cell + offset_x
-                point_y = top + (path_row + 0.5) * cell + offset_y
-                coordinates.extend((point_x, point_y))
-            tip_x = head_x + offset_x + dx * cell * 0.42
-            tip_y = head_y + offset_y + dy * cell * 0.42
+            cut_distance = eased * max(0, len(arrow.path) - 1)
+            cut_index = min(int(cut_distance), len(arrow.path) - 1)
+            cut_fraction = cut_distance - cut_index
+            cut_row, cut_col = arrow.path[cut_index]
+            if cut_index < len(arrow.path) - 1:
+                next_row, next_col = arrow.path[cut_index + 1]
+                cut_row += (next_row - cut_row) * cut_fraction
+                cut_col += (next_col - cut_col) * cut_fraction
+
+            coordinates: list[float] = [
+                left + (cut_col + 0.5) * cell,
+                top + (cut_row + 0.5) * cell,
+            ]
+            for path_row, path_col in arrow.path[cut_index + 1 :]:
+                coordinates.extend((left + (path_col + 0.5) * cell, top + (path_row + 0.5) * cell))
+
+            extension = cell * 0.42 + distance * eased
+            tip_x = head_x + dx * extension
+            tip_y = head_y + dy * extension
             coordinates.extend((tip_x, tip_y))
             color = ARROW_COLORS[direction]
-            current_item[0] = self.canvas.create_line(*coordinates, fill=color, width=max(5, int(cell * 0.075)), capstyle=tk.ROUND, joinstyle=tk.ROUND, arrow=tk.LAST, arrowshape=(cell * 0.22, cell * 0.25, cell * 0.10), tags="flight")
+            shadow = self.canvas.create_line(*coordinates, fill="#121b31", width=max(5, int(cell * 0.075)) + 5, capstyle=tk.ROUND, joinstyle=tk.ROUND, tags="flight")
+            line = self.canvas.create_line(*coordinates, fill=color, width=max(5, int(cell * 0.075)), capstyle=tk.ROUND, joinstyle=tk.ROUND, arrow=tk.LAST, arrowshape=(cell * 0.22, cell * 0.25, cell * 0.10), tags="flight")
+            current_items.extend((shadow, line))
             if frame < frames:
                 self.after(22, lambda: step(frame + 1))
             else:
-                self.canvas.delete(current_item[0])
+                for item in current_items:
+                    self.canvas.delete(item)
+                current_items.clear()
                 self.animation_active = False
 
         step(0)
