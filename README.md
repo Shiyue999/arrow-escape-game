@@ -38,6 +38,28 @@ python main.py
 python -m unittest discover -s tests -v
 ```
 
+## 游戏截图
+
+开始界面：
+
+![开始界面](screenshots/01-start.png)
+
+游戏界面：
+
+![游戏界面](screenshots/02-gameplay.png)
+
+碰撞反馈：
+
+![碰撞反馈](screenshots/03-collision.png)
+
+失败界面：
+
+![失败界面](screenshots/04-failure.png)
+
+胜利界面：
+
+![胜利界面](screenshots/05-victory.png)
+
 ## 项目结构
 
 ```text
@@ -45,6 +67,7 @@ main.py                  # Tkinter 图形界面、动画和交互
 game_logic.py            # 独立的关卡数据与游戏规则引擎
 tests/test_game_logic.py # 核心规则自动化测试
 README.md                # 项目说明
+screenshots/             # 游戏界面、碰撞、失败和胜利截图
 ```
 
 ## 关卡设计
